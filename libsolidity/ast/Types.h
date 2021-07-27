@@ -529,9 +529,6 @@ public:
 	/// smallest value in general.
 	bigint minIntegerValue() const;
 
-	/// @returns the smallest integer type that can hold this type with fractional parts shifted to integers.
-	IntegerType const* asIntegerType() const;
-
 private:
 	unsigned m_totalBits;
 	unsigned m_fractionalDigits;
@@ -573,9 +570,8 @@ public:
 
 	/// @returns the smallest integer type that can hold the value or an empty pointer if not possible.
 	IntegerType const* integerType() const;
-	/// @returns the smallest fixed type that can hold the value or incurs the least precision loss,
-	/// unless the value was truncated, then a suitable type will be chosen to indicate such event.
-	/// If the integer part does not fit, returns an empty pointer.
+	/// @returns the smallest fixed type that can hold the value.
+	/// If more than 80 digits of precision are needed or the integer part does not fit, returns an empty pointer.
 	FixedPointType const* fixedPointType() const;
 
 	/// @returns true if the value is not an integer.

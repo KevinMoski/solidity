@@ -553,8 +553,6 @@ BoolResult IntegerType::isExplicitlyConvertibleTo(Type const& _convertTo) const
 		return (!isSigned() && (numBits() == fixedBytesType->numBytes() * 8));
 	else if (dynamic_cast<EnumType const*>(&_convertTo))
 		return true;
-	else if (auto fixedPointType = dynamic_cast<FixedPointType const*>(&_convertTo))
-		return (isSigned() == fixedPointType->isSigned()) && (numBits() == fixedPointType->numBits());
 
 	return false;
 }
@@ -700,7 +698,16 @@ BoolResult FixedPointType::isImplicitlyConvertibleTo(Type const& _convertTo) con
 
 BoolResult FixedPointType::isExplicitlyConvertibleTo(Type const& _convertTo) const
 {
-	return _convertTo.category() == category() || _convertTo.category() == Category::Integer;
+	if (isImplicitlyConvertibleTo(_convertTo))
+		return true;
+	if (FixedBytesType const* convertTo = dynamic_cast<FixedBytesType const*>(&_convertTo))
+		return 8 * convertTo->numBytes() == m_totalBits;
+	if (IntegerType const* convertTo = dynamic_cast<IntegerType const*>(&_convertTo))
+		return
+			maxIntegerValue() <= convertTo->maxValue() &&
+			minIntegerValue() >= convertTo->minValue();
+
+	return false;
 }
 
 TypeResult FixedPointType::unaryOperatorResult(Token _operator) const
@@ -765,11 +772,6 @@ TypeResult FixedPointType::binaryOperatorResult(Token _operator, Type const* _ot
 	if (TokenTraits::isBitOp(_operator) || TokenTraits::isBooleanOp(_operator) || _operator == Token::Exp)
 		return nullptr;
 	return commonType;
-}
-
-IntegerType const* FixedPointType::asIntegerType() const
-{
-	return TypeProvider::integer(numBits(), isSigned() ? IntegerType::Modifier::Signed : IntegerType::Modifier::Unsigned);
 }
 
 tuple<bool, rational> RationalNumberType::parseRational(string const& _value)
@@ -986,9 +988,9 @@ TypeResult RationalNumberType::binaryOperatorResult(Token _operator, Type const*
 {
 	if (_other->category() == Category::Integer || _other->category() == Category::FixedPoint)
 	{
-		if (isFractional())
-			return TypeResult::err("Fractional literals not supported.");
-		else if (!integerType())
+		if (isFractional() && !fixedPointType())
+			return TypeResult::err("Literal too large or cannot be represented without precision loss.");
+		else if (!isFractional() && !integerType())
 			return TypeResult::err("Literal too large.");
 
 		// Shift and exp are not symmetric, so it does not make sense to swap
@@ -1154,6 +1156,10 @@ FixedPointType const* RationalNumberType::fixedPointType() const
 		value *= 10;
 		fractionalDigits++;
 	}
+
+	// We need more than 80 digits of precision.
+	if (fractionalDigits >= 80 && value.denominator() != 1)
+		return nullptr;
 
 	if (value > maxValue)
 		return nullptr;
