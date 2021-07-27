@@ -24,12 +24,19 @@
 #pragma once
 
 #include <libyul/ASTForward.h>
-
 #include <libyul/YulString.h>
+
+#include <libsolutil/CommonData.h>
+
+#include <liblangutil/SourceLocation.h>
+
+#include <map>
 
 namespace solidity::yul
 {
 struct Dialect;
+
+using ReverseSourceNameMap = std::map<unsigned, std::shared_ptr<std::string const>>;
 
 /**
  * Converts a parsed Yul AST into readable string representation.
@@ -39,8 +46,16 @@ struct Dialect;
 class AsmPrinter
 {
 public:
-	AsmPrinter() {}
-	explicit AsmPrinter(Dialect const& _dialect): m_dialect(&_dialect) {}
+	AsmPrinter(std::optional<std::map<unsigned, std::shared_ptr<std::string const>>> _sourceIndexToName = {})
+	{
+		if (_sourceIndexToName)
+			m_nameTosourceIndex= util::invertMap(*_sourceIndexToName);
+	}
+	explicit AsmPrinter(Dialect const& _dialect, std::optional<std::map<unsigned, std::shared_ptr<std::string const>>> _sourceIndexToName = {}): m_dialect(&_dialect)
+	{
+		if (_sourceIndexToName)
+			m_nameTosourceIndex= util::invertMap(*_sourceIndexToName);
+	}
 
 	std::string operator()(Literal const& _literal) const;
 	std::string operator()(Identifier const& _identifier) const;
@@ -60,8 +75,11 @@ public:
 private:
 	std::string formatTypedName(TypedName _variable) const;
 	std::string appendTypeName(YulString _type, bool _isBoolLiteral = false) const;
+	std::string formatSourceLocationComment(std::shared_ptr<DebugData const> _debugData) const;
 
 	Dialect const* m_dialect = nullptr;
+	std::optional<std::map<std::shared_ptr<std::string const>, unsigned>> m_nameTosourceIndex;
+	mutable langutil::SourceLocation m_lastLocation = {};
 };
 
 }

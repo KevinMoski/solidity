@@ -41,8 +41,6 @@ using namespace solidity;
 using namespace solidity::util;
 using namespace solidity::yul;
 
-//@TODO source locations
-
 string AsmPrinter::operator()(Literal const& _literal) const
 {
 	switch (_literal.kind)
@@ -68,7 +66,7 @@ string AsmPrinter::operator()(Identifier const& _identifier) const
 
 string AsmPrinter::operator()(ExpressionStatement const& _statement) const
 {
-	return std::visit(*this, _statement.expression);
+	return formatSourceLocationComment(_statement.debugData) + std::visit(*this, _statement.expression);
 }
 
 string AsmPrinter::operator()(Assignment const& _assignment) const
@@ -77,7 +75,7 @@ string AsmPrinter::operator()(Assignment const& _assignment) const
 	string variables = (*this)(_assignment.variableNames.front());
 	for (size_t i = 1; i < _assignment.variableNames.size(); ++i)
 		variables += ", " + (*this)(_assignment.variableNames[i]);
-	return variables + " := " + std::visit(*this, *_assignment.value);
+	return formatSourceLocationComment(_assignment.debugData) + variables + " := " + std::visit(*this, *_assignment.value);
 }
 
 string AsmPrinter::operator()(VariableDeclaration const& _variableDeclaration) const
@@ -94,7 +92,7 @@ string AsmPrinter::operator()(VariableDeclaration const& _variableDeclaration) c
 		out += " := ";
 		out += std::visit(*this, *_variableDeclaration.value);
 	}
-	return out;
+	return formatSourceLocationComment(_variableDeclaration.debugData) + out;
 }
 
 string AsmPrinter::operator()(FunctionDefinition const& _functionDefinition) const
@@ -119,12 +117,13 @@ string AsmPrinter::operator()(FunctionDefinition const& _functionDefinition) con
 		);
 	}
 
-	return out + "\n" + (*this)(_functionDefinition.body);
+	return formatSourceLocationComment(_functionDefinition.debugData) + out + "\n" + (*this)(_functionDefinition.body);
 }
 
 string AsmPrinter::operator()(FunctionCall const& _functionCall) const
 {
 	return
+		formatSourceLocationComment(_functionCall.debugData) +
 		(*this)(_functionCall.functionName) + "(" +
 		boost::algorithm::join(
 			_functionCall.arguments | ranges::views::transform([&](auto&& _node) { return std::visit(*this, _node); }),
@@ -139,7 +138,7 @@ string AsmPrinter::operator()(If const& _if) const
 	char delim = '\n';
 	if (body.find('\n') == string::npos)
 		delim = ' ';
-	return "if " + std::visit(*this, *_if.condition) + delim + (*this)(_if.body);
+	return formatSourceLocationComment(_if.debugData) + "if " + std::visit(*this, *_if.condition) + delim + (*this)(_if.body);
 }
 
 string AsmPrinter::operator()(Switch const& _switch) const
@@ -154,7 +153,7 @@ string AsmPrinter::operator()(Switch const& _switch) const
 			out += "\ncase " + (*this)(*_case.value) + " ";
 		out += (*this)(_case.body);
 	}
-	return out;
+	return formatSourceLocationComment(_switch.debugData) + out;
 }
 
 string AsmPrinter::operator()(ForLoop const& _forLoop) const
@@ -175,42 +174,44 @@ string AsmPrinter::operator()(ForLoop const& _forLoop) const
 		(*this)(_forLoop.body);
 }
 
-string AsmPrinter::operator()(Break const&) const
+string AsmPrinter::operator()(Break const& _break) const
 {
-	return "break";
+	return formatSourceLocationComment(_break.debugData) + "break";
 }
 
-string AsmPrinter::operator()(Continue const&) const
+string AsmPrinter::operator()(Continue const& _continue) const
 {
-	return "continue";
+	return formatSourceLocationComment(_continue.debugData) + "continue";
 }
 
-string AsmPrinter::operator()(Leave const&) const
+string AsmPrinter::operator()(Leave const& _leave) const
 {
-	return "leave";
+	return formatSourceLocationComment(_leave.debugData) + "leave";
 }
 
 string AsmPrinter::operator()(Block const& _block) const
 {
+	string const locationComment = formatSourceLocationComment(_block.debugData);
+
 	if (_block.statements.empty())
-		return "{ }";
+		return locationComment + "{ }";
 	string body = boost::algorithm::join(
 		_block.statements | ranges::views::transform([&](auto&& _node) { return std::visit(*this, _node); }),
 		"\n"
 	);
 	if (body.size() < 30 && body.find('\n') == string::npos)
-		return "{ " + body + " }";
+		return locationComment + "{ " + body + " }";
 	else
 	{
 		boost::replace_all(body, "\n", "\n    ");
-		return "{\n    " + body + "\n}";
+		return locationComment + "{\n    " + body + "\n}";
 	}
 }
 
 string AsmPrinter::formatTypedName(TypedName _variable) const
 {
 	yulAssert(!_variable.name.empty(), "Invalid variable name.");
-	return _variable.name.str() + appendTypeName(_variable.type);
+	return formatSourceLocationComment(_variable.debugData) + _variable.name.str() + appendTypeName(_variable.type);
 }
 
 string AsmPrinter::appendTypeName(YulString _type, bool _isBoolLiteral) const
@@ -227,4 +228,18 @@ string AsmPrinter::appendTypeName(YulString _type, bool _isBoolLiteral) const
 		return {};
 	else
 		return ":" + _type.str();
+}
+
+std::string AsmPrinter::formatSourceLocationComment(shared_ptr<DebugData const> _debugData) const
+{
+	if (!_debugData || m_lastLocation == _debugData->location || !m_nameTosourceIndex)
+		return "";
+
+	auto resultIter = m_nameTosourceIndex->find(_debugData->location.sourceName);
+	if (resultIter == m_nameTosourceIndex->end())
+		return "";
+
+	m_lastLocation = _debugData->location;
+
+	return "/** @src " + to_string(resultIter->second) + ":" + to_string(_debugData->location.start) + ":" + to_string(_debugData->location.end) + " */\n";
 }
