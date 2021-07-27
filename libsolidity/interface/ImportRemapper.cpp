@@ -20,10 +20,12 @@
 #include <liblangutil/Exceptions.h>
 
 using std::equal;
+using std::find;
 using std::move;
 using std::nullopt;
 using std::optional;
 using std::string;
+using std::string_view;
 using std::vector;
 
 namespace solidity::frontend
@@ -77,7 +79,12 @@ SourceUnitName ImportRemapper::apply(ImportPath const& _path, string const& _con
 	return path;
 }
 
-optional<ImportRemapper::Remapping> ImportRemapper::parseRemapping(string const& _input)
+bool ImportRemapper::isRemapping(string_view const& _input)
+{
+	return _input.find("=") != string::npos;
+}
+
+optional<ImportRemapper::Remapping> ImportRemapper::parseRemapping(string_view const& _input)
 {
 	auto equals = find(_input.begin(), _input.end(), '=');
 	if (equals == _input.end())

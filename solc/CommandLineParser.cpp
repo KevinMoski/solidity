@@ -304,8 +304,15 @@ bool CommandLineParser::parseInputPathsAndRemappings()
 	if (m_args.count(g_strInputFile))
 		for (string positionalArg: m_args[g_strInputFile].as<vector<string>>())
 		{
-			if (optional<ImportRemapper::Remapping> remapping = ImportRemapper::parseRemapping(positionalArg))
+			if (ImportRemapper::isRemapping(positionalArg))
 			{
+				optional<ImportRemapper::Remapping> remapping = ImportRemapper::parseRemapping(positionalArg);
+				if (!remapping.has_value())
+				{
+					serr() << "Invalid remapping: \"" << positionalArg << "\"." << endl;
+					return false;
+				}
+
 				if (m_options.input.mode == InputMode::StandardJson)
 				{
 					serr() << "Import remappings are not accepted on the command line in Standard JSON mode." << endl;
